@@ -199,7 +199,7 @@ python fetch_items_links.py -d
 
 ### 機能概要
 
-Factorio Wikiのアイテムページからレシピ情報（材料と生成物）を抽出し、JSON形式で出力します。また、新しいアイテム情報をCSVに追加する機能も提供します。
+Factorio Wikiのアイテムページからレシピ情報（材料と生成物）を抽出し、アイテム情報ファイルにレシピ情報を付記してJSON形式で保存します。アイテム情報ファイルは「item_アイテム名.json」の形式で保存され、既存のファイルがある場合はそれに追記・上書きします。また、新しいアイテム情報をCSVに追加する機能も提供します。
 
 ### コマンドライン引数
 
@@ -248,9 +248,9 @@ python get_item_recipe.py -i <アイテム名> -a <アイテムコード> <URL>
   1. ItemManagerを初期化
   2. アイテム名からアイテムコードを取得
 
-#### `create_recipe_json(item_name, materials, product, csv_path=None, language=None)`
+#### `create_item_json(item_name, materials, product, csv_path=None, language=None)`
 
-レシピ情報からJSON形式のデータを作成します。
+レシピ情報をJSON形式のデータとして作成し、アイテム情報ファイルに付記します。
 
 - **引数**:
   - `item_name` (str): アイテムの名前
@@ -269,6 +269,7 @@ python get_item_recipe.py -i <アイテム名> -a <アイテムコード> <URL>
 
 ```json
 {
+    "item_name": "鉄板",
     "item_code": "Iron_plate",
     "recipe": [
         {
