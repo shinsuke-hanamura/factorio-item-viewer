@@ -3,7 +3,11 @@ Factorio レシピ取得ツール
 =========================
 
 このスクリプトは、Factorioのレシピ情報をウェブサイトから取得するツールです。
-Factorioのレシピページから材料と生成物の情報を抽出し、JSON形式で出力します。
+Factorioのレシピページから材料と生成物の情報を抽出し、アイテム情報ファイルに
+レシピ情報を付記してJSON形式で保存します。
+
+アイテム情報ファイルは「item_アイテム名.json」の形式で保存され、
+既存のファイルがある場合はそれに追記・上書きします。
 
 使用方法:
   python factorio_recipe.py -i <アイテム名> [-m <ゲームモード>] [-c <CSVファイルパス>] [-d] [-l <言語コード>] [--config <設定ファイルパス>]
@@ -218,9 +222,9 @@ def get_item_code_from_name(item_name, csv_path=None, language=None):
     manager = ItemManager(csv_path, language)
     return manager.get_item_code(item_name)
 
-def create_recipe_json(item_name, materials, product, csv_path=None, language=None):
+def create_item_json(item_name, materials, product, csv_path=None, language=None):
     """
-    レシピ情報からJSON形式のデータを作成する関数
+    レシピ情報をJSON形式のデータとして作成する関数
     
     引数:
         item_name (str): アイテムの名前
@@ -236,7 +240,8 @@ def create_recipe_json(item_name, materials, product, csv_path=None, language=No
     item_code = get_item_code_from_name(item_name, csv_path, language)
     
     # JSONデータの基本構造
-    recipe_data = {
+    item_data = {
+        "item_name": item_name,
         "item_code": item_code,
         "recipe": [],
         "production_number": 0
@@ -251,7 +256,7 @@ def create_recipe_json(item_name, materials, product, csv_path=None, language=No
             logging.warning(f"材料「{material_code}」の数量「{quantity}」を数値に変換できません。デフォルト値1を使用します。")
             consumption_number = 1
             
-        recipe_data["recipe"].append({
+        item_data["recipe"].append({
             "item_code": material_code,
             "consumption_number": consumption_number
         })
@@ -265,9 +270,9 @@ def create_recipe_json(item_name, materials, product, csv_path=None, language=No
             logging.warning(f"生成物の数量「{product[1] if len(product) > 1 else 'unknown'}」を数値に変換できません。デフォルト値1を使用します。")
             production_number = 1
             
-        recipe_data["production_number"] = production_number
+        item_data["production_number"] = production_number
     
-    return recipe_data
+    return item_data
 
 def main():
     """
@@ -345,12 +350,26 @@ def main():
     # レシピ情報の取得
     materials, product = get_recipe(page_url, game_mode=game_mode)
     
-    # JSON形式で出力
-    recipe_json = create_recipe_json(item_name, materials, product, csv_path, language)
+    # アイテム情報にレシピ情報を付記してJSON形式で出力
+    item_json = create_item_json(item_name, materials, product, csv_path, language)
     
     # JSONファイルのパスを取得
-    json_filename = f"{item_name}_recipe.json"
+    json_filename = f"item_{item_name}.json"
     json_path = config.get_json_path(json_filename)
+    
+    # 既存のJSONファイルがあれば読み込む
+    existing_data = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+            logging.info(f"既存のアイテム情報を {json_path} から読み込みました。")
+        except Exception as e:
+            logging.error(f"既存のJSONファイルの読み込みエラー: {e}")
+            logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
+    
+    # 既存のデータを更新
+    existing_data.update(item_json)
     
     # JSONファイルに保存
     try:
@@ -358,15 +377,16 @@ def main():
         os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
         
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(recipe_json, f, ensure_ascii=False, indent=4)
+            json.dump(existing_data, f, ensure_ascii=False, indent=4)
         
-        logging.info(f"レシピ情報を {json_path} に保存しました。")
+        logging.info(f"アイテム情報を {json_path} に保存しました。")
     except Exception as e:
         logging.error(f"JSONファイルの保存エラー: {e}")
         logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
     
     # 標準出力にも表示
-    print(json.dumps(recipe_json, ensure_ascii=False, indent=4))
+    print(json.dumps(item_json, ensure_ascii=False, indent=4))
+    print(f"レシピ情報をアイテム情報ファイル {json_path} に保存しました。")
 
 
 if __name__ == '__main__':
