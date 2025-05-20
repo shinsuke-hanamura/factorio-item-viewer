@@ -307,7 +307,7 @@ python get_item_recipe.py -i 崖用発破 -a Cliff_explosives https://wiki.facto
 
 ### 機能概要
 
-Factorio Wikiのアイテム情報ページからロケット容量を取得し、アイテムの容積を計算します。
+Factorio Wikiのアイテム情報ページからロケット容量を取得し、アイテムの容積を計算します。アイテム情報ファイルに容量情報を付記してJSON形式で保存します。アイテム情報ファイルは「item_アイテム名.json」の形式で保存され、既存のファイルがある場合はそれに追記・上書きします。
 
 ### コマンドライン引数
 
@@ -346,6 +346,22 @@ python get_item_volume.py -i <アイテム名> [-c <CSVファイルパス>] [-d]
   - `float`: アイテムの容積、ロケット容量がNoneまたは0の場合はNone
 - **処理内容**:
   1. ロケット容積（1000）をロケット容量で割って容積を計算
+
+#### `create_item_json(item_name, rocket_capacity, item_volume, csv_path=None, language=None)`
+
+容量情報をJSON形式のデータとして作成し、アイテム情報ファイルに付記します。
+
+- **引数**:
+  - `item_name` (str): アイテムの名前
+  - `rocket_capacity` (int): ロケット容量
+  - `item_volume` (float): アイテム容積
+  - `csv_path` (str): CSVファイルのパス
+  - `language` (str): 言語コード
+- **戻り値**:
+  - `dict`: JSON形式のアイテムデータ（容量情報を含む）
+- **処理内容**:
+  1. アイテムコードを取得
+  2. 容量情報をJSONに変換
 
 ### 出力JSON形式
 
