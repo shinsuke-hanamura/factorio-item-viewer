@@ -4,6 +4,10 @@ Factorio アイテム容積取得ツール
 
 このスクリプトは、Factorioのアイテム情報ページからロケット容量を取得し、
 アイテムの容積を計算するツールです。
+アイテム情報ファイルに容量情報を付記してJSON形式で保存します。
+
+アイテム情報ファイルは「item_アイテム名.json」の形式で保存され、
+既存のファイルがある場合はそれに追記・上書きします。
 
 使用方法:
   python get_item_volume.py -i <アイテム名> [-c <CSVファイルパス>] [-d] [-l <言語コード>] [--config <設定ファイルパス>]
@@ -185,17 +189,57 @@ def main():
     # ロケット容量の取得
     rocket_capacity = get_item_rocket_capacity(page_url)
     
+    # 容積の計算
+    item_volume = calculate_item_volume(rocket_capacity)
+    
     # 容積情報をJSON形式で作成
-    volume_data = {
-        "item_name": item_name,
-        "item_code": manager.get_item_code(item_name),
-        "rocket_capacity": rocket_capacity,
-        "volume": calculate_item_volume(rocket_capacity)
-    }
+    def create_item_json(item_name, rocket_capacity, item_volume, csv_path=None, language=None):
+        """
+        容量情報をJSON形式のデータとして作成し、アイテム情報ファイルに付記する関数
+        
+        引数:
+            item_name (str): アイテムの名前
+            rocket_capacity (int): ロケット容量
+            item_volume (float): アイテム容積
+            csv_path (str): CSVファイルのパス
+            language (str): 言語コード
+            
+        戻り値:
+            dict: JSON形式のアイテムデータ（容量情報を含む）
+        """
+        # アイテムコードを取得
+        item_code = manager.get_item_code(item_name)
+        
+        # JSONデータの基本構造
+        item_data = {
+            "item_name": item_name,
+            "item_code": item_code,
+            "rocket_capacity": rocket_capacity,
+            "volume": item_volume
+        }
+        
+        return item_data
+    
+    # アイテム情報にレシピ情報を付記してJSON形式で出力
+    volume_data = create_item_json(item_name, rocket_capacity, item_volume, csv_path, language)
     
     # JSONファイルのパスを取得
-    json_filename = f"{item_name}_volume.json"
+    json_filename = f"item_{item_name}.json"
     json_path = config.get_json_path(json_filename)
+    
+    # 既存のJSONファイルがあれば読み込む
+    existing_data = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+            logging.info(f"既存のアイテム情報を {json_path} から読み込みました。")
+        except Exception as e:
+            logging.error(f"既存のJSONファイルの読み込みエラー: {e}")
+            logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
+    
+    # 既存のデータを更新
+    existing_data.update(volume_data)
     
     # JSONファイルに保存
     try:
@@ -203,9 +247,10 @@ def main():
         os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
         
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(volume_data, f, ensure_ascii=False, indent=4)
+            json.dump(existing_data, f, ensure_ascii=False, indent=4)
         
-        logging.info(f"容積情報を {json_path} に保存しました。")
+        logging.info(f"アイテム情報を {json_path} に保存しました。")
+        print(f"容量情報をアイテム情報ファイル {json_path} に保存しました。")
     except Exception as e:
         logging.error(f"JSONファイルの保存エラー: {e}")
         logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
