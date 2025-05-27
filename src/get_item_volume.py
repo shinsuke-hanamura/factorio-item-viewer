@@ -134,6 +134,165 @@ def calculate_item_volume(rocket_capacity):
     logging.debug(f"アイテム容積を計算: {volume}")
     return volume
 
+def create_item_json(item_name, rocket_capacity, item_volume, csv_path=None, language=None):
+    """
+    容量情報をJSON形式のデータとして作成し、アイテム情報ファイルに付記する関数
+    
+    引数:
+        item_name (str): アイテムの名前
+        rocket_capacity (int): ロケット容量
+        item_volume (float): アイテム容積
+        csv_path (str): CSVファイルのパス
+        language (str): 言語コード
+        
+    戻り値:
+        dict: JSON形式のアイテムデータ（容量情報を含む）
+    """
+    # ItemManagerの初期化
+    manager = ItemManager(csv_path, language)
+    
+    # アイテムコードを取得
+    item_code = manager.get_item_code(item_name)
+    
+    # JSONデータの基本構造
+    item_data = {
+        "item_name": item_name,
+        "item_code": item_code,
+        "rocket_capacity": rocket_capacity,
+        "volume": item_volume
+    }
+    
+    return item_data
+
+def get_item_volume(item_name, csv_path, language, json_dir=None, max_depth=0, current_depth=0, processed_items=None):
+    """
+    アイテムの容積情報を取得し、JSONファイルに保存する関数
+    
+    引数:
+        item_name (str): アイテムの名前
+        csv_path (str): CSVファイルのパス
+        language (str): 言語コード
+        json_dir (str): JSONファイルの保存ディレクトリ（デフォルト: None、保存しない）
+        max_depth (int): 再帰的に材料のレシピを取得する最大深さ（デフォルト: 0、再帰なし）
+        current_depth (int): 現在の再帰深さ（内部使用）
+        processed_items (set): 既に処理済みのアイテム名のセット（内部使用、循環参照防止）
+        
+    戻り値:
+        dict: アイテム情報を含む辞書
+    """
+    # 処理済みアイテムの初期化（循環参照防止）
+    if processed_items is None:
+        processed_items = set()
+    
+    # 既に処理済みのアイテムの場合はスキップ
+    if item_name in processed_items:
+        logging.debug(f"アイテム「{item_name}」は既に処理済みのため、スキップします。")
+        return None
+    
+    # 処理済みアイテムに追加
+    processed_items.add(item_name)
+    
+    # ItemManagerの初期化
+    manager = ItemManager(csv_path, language)
+
+    # アイテム名からURLを取得
+    logging.debug(f"アイテム名: {item_name}")
+    
+    page_url = manager.get_item_url(item_name)
+    if not page_url:
+        logging.error(f"指定されたアイテム「{item_name}」はCSVに見つかりません。")
+        return None
+    
+    logging.info(f"アイテム「{item_name}」のURLを取得: {page_url}")
+
+    # ロケット容量の取得
+    rocket_capacity = get_item_rocket_capacity(page_url)
+    
+    # 容積の計算
+    item_volume = calculate_item_volume(rocket_capacity)
+    
+    # アイテム情報に容積情報を付記してJSON形式で出力
+    volume_data = create_item_json(item_name, rocket_capacity, item_volume, csv_path, language)
+    
+    # JSONファイルに保存
+    if json_dir:
+        # JSONファイルのパスを取得
+        json_filename = f"item_{item_name}.json"
+        json_path = os.path.join(json_dir, json_filename)
+        
+        # 既存のJSONファイルがあれば読み込む
+        existing_data = {}
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                logging.info(f"既存のアイテム情報を {json_path} から読み込みました。")
+            except Exception as e:
+                logging.error(f"既存のJSONファイルの読み込みエラー: {e}")
+                logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
+        
+        # 既存のデータを更新
+        existing_data.update(volume_data)
+        
+        # JSONファイルに保存
+        try:
+            # ディレクトリが存在しない場合は作成
+            os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+            
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, ensure_ascii=False, indent=4)
+            
+            logging.info(f"アイテム情報を {json_path} に保存しました。")
+            
+            # 最上位の呼び出しの場合のみ標準出力に表示
+            if current_depth == 0:
+                print(f"🚀 アイテム: {item_name} の容積情報:")
+                
+                if rocket_capacity:
+                    print(f"ロケット容量: {rocket_capacity}")
+                    
+                    if item_volume:
+                        print(f"アイテム容積: {item_volume:.2f}")
+                    else:
+                        print("アイテム容積を計算できませんでした。")
+                else:
+                    print("ロケット容量情報は取得できませんでした。")
+                
+                print(f"容量情報をアイテム情報ファイル {json_path} に保存しました。")
+        except Exception as e:
+            logging.error(f"JSONファイルの保存エラー: {e}")
+            logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
+    
+    # 最大深さに達していない場合、材料のレシピも再帰的に取得
+    if max_depth > 0 and current_depth < max_depth:
+        # 材料情報を取得するために、レシピ情報が必要
+        # レシピ情報を取得するために、get_item_recipeモジュールをインポート
+        try:
+            from get_item_recipe import get_recipe
+            
+            # レシピ情報を取得
+            materials, _ = get_recipe(page_url)
+            
+            for material_code, _ in materials:
+                # 材料のアイテム名を取得
+                material_item = manager.find_item_by_code(material_code)
+                if material_item:
+                    material_name = material_item.name
+                    # 材料の容積情報を再帰的に取得
+                    get_item_volume(
+                        material_name, 
+                        csv_path,
+                        language,
+                        json_dir,  # 材料のJSONも同じディレクトリに保存
+                        max_depth, 
+                        current_depth + 1, 
+                        processed_items
+                    )
+        except ImportError:
+            logging.warning("get_item_recipeモジュールをインポートできないため、材料の再帰的な処理をスキップします。")
+    
+    return volume_data
+
 def main():
     """
     メイン関数: コマンドライン引数を解析し、アイテムの容積情報を取得して表示
@@ -147,6 +306,8 @@ def main():
     parser.add_argument('-l', '--lang', type=str, choices=['ja', 'en'], default=None,
                         help='言語コード (ja または en)')
     parser.add_argument('--config', type=str, default=None, help='設定ファイルのパス')
+    parser.add_argument('--depth', type=int, default=0, 
+                        help='材料の容積情報を再帰的に取得する深さ（デフォルト: 0、再帰なし）')
     args = parser.parse_args()
 
     # デバッグモードを有効化
@@ -171,104 +332,24 @@ def main():
     language = config.get_language()
     logging.debug(f"言語設定: {language}")
 
-    # ItemManagerの初期化
-    manager = ItemManager(csv_path, language)
+    # JSONディレクトリを取得
+    json_dir = os.path.join(config.get('data_dir', ''), config.get('json_dir', ''))
+    logging.debug(f"JSONディレクトリ: {json_dir}")
 
-    # アイテム名からURLを取得
+    # アイテム名
     item_name = args.item
-    logging.debug(f"アイテム名: {item_name}")
     
-    page_url = manager.get_item_url(item_name)
-    if not page_url:
-        logging.error(f"指定されたアイテム「{item_name}」はCSVに見つかりません。")
+    # 容積情報の取得と保存
+    volume_data = get_item_volume(
+        item_name, 
+        csv_path, 
+        language, 
+        json_dir,
+        args.depth
+    )
+    
+    if not volume_data:
         print(f"エラー: アイテム「{item_name}」の情報が見つかりません。")
-        return
-    
-    logging.info(f"アイテム「{item_name}」のURLを取得: {page_url}")
-
-    # ロケット容量の取得
-    rocket_capacity = get_item_rocket_capacity(page_url)
-    
-    # 容積の計算
-    item_volume = calculate_item_volume(rocket_capacity)
-    
-    # 容積情報をJSON形式で作成
-    def create_item_json(item_name, rocket_capacity, item_volume, csv_path=None, language=None):
-        """
-        容量情報をJSON形式のデータとして作成し、アイテム情報ファイルに付記する関数
-        
-        引数:
-            item_name (str): アイテムの名前
-            rocket_capacity (int): ロケット容量
-            item_volume (float): アイテム容積
-            csv_path (str): CSVファイルのパス
-            language (str): 言語コード
-            
-        戻り値:
-            dict: JSON形式のアイテムデータ（容量情報を含む）
-        """
-        # アイテムコードを取得
-        item_code = manager.get_item_code(item_name)
-        
-        # JSONデータの基本構造
-        item_data = {
-            "item_name": item_name,
-            "item_code": item_code,
-            "rocket_capacity": rocket_capacity,
-            "volume": item_volume
-        }
-        
-        return item_data
-    
-    # アイテム情報にレシピ情報を付記してJSON形式で出力
-    volume_data = create_item_json(item_name, rocket_capacity, item_volume, csv_path, language)
-    
-    # JSONファイルのパスを取得
-    json_filename = f"item_{item_name}.json"
-    json_path = config.get_json_path(json_filename)
-    
-    # 既存のJSONファイルがあれば読み込む
-    existing_data = {}
-    if os.path.exists(json_path):
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                existing_data = json.load(f)
-            logging.info(f"既存のアイテム情報を {json_path} から読み込みました。")
-        except Exception as e:
-            logging.error(f"既存のJSONファイルの読み込みエラー: {e}")
-            logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
-    
-    # 既存のデータを更新
-    existing_data.update(volume_data)
-    
-    # JSONファイルに保存
-    try:
-        # ディレクトリが存在しない場合は作成
-        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
-        
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(existing_data, f, ensure_ascii=False, indent=4)
-        
-        logging.info(f"アイテム情報を {json_path} に保存しました。")
-        print(f"容量情報をアイテム情報ファイル {json_path} に保存しました。")
-    except Exception as e:
-        logging.error(f"JSONファイルの保存エラー: {e}")
-        logging.debug(f"例外の詳細: {str(e)}", exc_info=True)
-    
-    # 結果の表示
-    print(f"🚀 アイテム: {item_name} の容積情報:")
-    
-    if rocket_capacity:
-        print(f"ロケット容量: {rocket_capacity}")
-        
-        # 容積の計算と表示
-        item_volume = calculate_item_volume(rocket_capacity)
-        if item_volume:
-            print(f"アイテム容積: {item_volume:.2f}")
-        else:
-            print("アイテム容積を計算できませんでした。")
-    else:
-        print("ロケット容量情報は取得できませんでした。")
 
 
 if __name__ == '__main__':
